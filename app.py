@@ -13,9 +13,11 @@ import logging
 import os
 import re
 
+import numpy as np
 import requests
 from databricks.sdk import WorkspaceClient
 from flask import Flask, jsonify, render_template, request
+from sentence_transformers import SentenceTransformer
 
 import lakebase
 from massive_client import MassiveClient
@@ -29,6 +31,9 @@ _w = WorkspaceClient()
 TABLE_NAME = os.environ.get("MASSIVE_TABLE_NAME", "massive_records")
 WATCHLIST_TABLE_NAME = os.environ.get("WATCHLIST_TABLE_NAME", "watchlist")
 NEWS_TABLE_NAME = os.environ.get("NEWS_TABLE_NAME", "ticker_news_documents")
+EMBEDDINGS_TABLE_NAME = os.environ.get("EMBEDDINGS_TABLE_NAME", "ticker_news_embeddings")
+CHUNK_EMBEDDINGS_TABLE_NAME = os.environ.get("CHUNK_EMBEDDINGS_TABLE_NAME", "ticker_news_chunk_embeddings")
+EMBEDDING_MODEL_NAME = os.environ.get("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 
 # Tickers to fetch news for by default (comma-separated), e.g. "AAPL,MSFT,GOOGL"
 DEFAULT_NEWS_TICKERS = [
@@ -41,6 +46,17 @@ DEFAULT_NEWS_TICKERS = [
 # ".X" or ".XX" share-class suffix (e.g. "BRK.B"). This rejects obviously
 # malformed input before we even call the Massive API.
 _TICKER_RE = re.compile(r"^[A-Z]{1,10}(\.[A-Z]{1,2})?$")
+
+# Load embedding model once at startup for vector search
+_embedding_model = None
+
+def _get_embedding_model():
+    """Lazy-load the sentence transformer model for vector search."""
+    global _embedding_model
+    if _embedding_model is None:
+        logger.info(f"Loading embedding model: {EMBEDDING_MODEL_NAME}")
+        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    return _embedding_model
 
 
 def ensure_table():
@@ -137,6 +153,12 @@ def handle_exception(err):
 def index():
     """Simple UI to submit a list of stock symbols to sync from Massive."""
     return render_template("index.html")
+
+
+@app.route("/search")
+def search_page():
+    """Vector search UI for finding relevant ticker articles and chunks."""
+    return render_template("search.html")
 
 
 @app.route("/records")
@@ -284,6 +306,87 @@ def delete_from_watchlist(symbol: str):
         return jsonify({"error": f"{symbol} is not on your watchlist"}), 404
 
     return jsonify({"symbol": symbol, "email": email, "deleted": True})
+
+
+@app.route("/search/query", methods=["POST"])
+def search_query():
+    """
+    Vector similarity search over ticker news embeddings.
+    
+    Body: {"query": "<search text>", "limit": 10, "include_chunks": true|false}
+    Returns the most semantically similar documents (title + description).
+    If include_chunks is true, also returns the most relevant chunks.
+    """
+    if not request.is_json:
+        return jsonify({"error": "Request must be JSON"}), 400
+    
+    query_text = request.json.get("query", "").strip()
+    if not query_text:
+        return jsonify({"error": "Query text is required"}), 400
+    
+    limit = int(request.json.get("limit", 10))
+    include_chunks = request.json.get("include_chunks", False)  # boolean flag
+    
+    # Embed the query using the same model
+    model = _get_embedding_model()
+    query_embedding = model.encode([query_text])[0].tolist()
+    
+    # Format embedding as PostgreSQL array literal for pgvector
+    embedding_str = '[' + ','.join(str(float(x)) for x in query_embedding) + ']'
+    
+    results = {}
+    
+    # Always search articles (documents) - join with news table to get description
+    try:
+        article_sql = f"""
+            SELECT 
+                e.id,
+                e.ticker,
+                n.title,
+                n.description,
+                n.article_url,
+                n.published_utc,
+                n.sentiment,
+                e.embedding <=> %s::vector AS distance
+            FROM {EMBEDDINGS_TABLE_NAME} e
+            JOIN {NEWS_TABLE_NAME} n ON e.id = n.id
+            WHERE e.embedding IS NOT NULL
+            ORDER BY distance ASC
+            LIMIT %s
+        """
+        articles = lakebase.run_query(article_sql, (embedding_str, limit))
+        results["articles"] = articles
+    except Exception as e:
+        logger.exception("Error searching articles")
+        results["articles_error"] = str(e)
+    
+    # Search chunks only if checkbox is checked
+    if include_chunks:
+        try:
+            chunk_sql = f"""
+                SELECT 
+                    c.article_id,
+                    c.ticker,
+                    n.title,
+                    n.article_url,
+                    n.published_utc,
+                    n.sentiment,
+                    c.chunk_text,
+                    c.chunk_index,
+                    c.embedding <=> %s::vector AS distance
+                FROM {CHUNK_EMBEDDINGS_TABLE_NAME} c
+                JOIN {NEWS_TABLE_NAME} n ON c.article_id = n.id
+                WHERE c.embedding IS NOT NULL
+                ORDER BY distance ASC
+                LIMIT %s
+            """
+            chunks = lakebase.run_query(chunk_sql, (embedding_str, limit))
+            results["chunks"] = chunks
+        except Exception as e:
+            logger.exception("Error searching chunks")
+            results["chunks_error"] = str(e)
+    
+    return jsonify(results)
 
 
 def _extract_latest_price(data: dict) -> float | None:

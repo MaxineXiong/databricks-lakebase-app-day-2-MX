@@ -22,10 +22,10 @@ CREATE TABLE IF NOT EXISTS ticker_news_embeddings (
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Create HNSW index for fast cosine similarity search
-CREATE INDEX IF NOT EXISTS idx_ticker_news_embeddings_embedding
-ON ticker_news_embeddings
-USING hnsw (embedding vector_cosine_ops);
+-- -- Create HNSW index for fast cosine similarity search
+-- CREATE INDEX IF NOT EXISTS idx_ticker_news_embeddings_embedding
+-- ON ticker_news_embeddings
+-- USING hnsw (embedding vector_cosine_ops);
 
 -- Verify the table was created
 SELECT 

@@ -124,6 +124,8 @@ All of this is done through the Databricks workspace UI:
 - `POST /watchlist` - add/update a symbol on the current user's watchlist
 - `DELETE /watchlist/<symbol>` - remove a symbol from the current user's watchlist
 - `POST /news/sync` with optional JSON body `{"tickers": ["AAPL", "MSFT"], "limit": 50}` - pull recent news per ticker from Massive and upsert into `ticker_news_documents`
+- `GET /search` - vector search UI for finding relevant ticker articles and chunks
+- `POST /search/query` with JSON body `{"query": "<text>", "search_type": "articles|chunks|both", "limit": 10}` - perform semantic similarity search over ticker news embeddings and return the most relevant articles and/or chunks
 
 ## Scheduling the embeddings notebook as a Databricks Workflow
 

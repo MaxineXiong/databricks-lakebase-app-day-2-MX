@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Ingest Ticker News -> Vector Embeddings (Lakebase)
 # MAGIC
@@ -31,11 +35,12 @@
 # COMMAND ----------
 
 # DBTITLE 1,Install all required packages
-# MAGIC %pip uninstall -y psycopg2 psycopg2-binary
-# MAGIC %pip install -q 'databricks-sdk>=0.118.0' sentence-transformers trafilatura requests pandas
+!pip uninstall -y psycopg2 psycopg2-binary
+!pip install -q 'databricks-sdk>=0.118.0' sentence-transformers trafilatura requests pandas
 
 # COMMAND ----------
 
+# DBTITLE 1,Restart the Python kernel to use updated packages
 dbutils.library.restartPython()
 
 # COMMAND ----------
@@ -49,11 +54,12 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
+# DBTITLE 1,Set configuration parameters
 dbutils.widgets.text("watchlist_table_name", "watchlist", "Source table (watchlist symbols)")
 dbutils.widgets.text("news_table_name", "ticker_news_documents", "Destination table (raw news)")
 dbutils.widgets.text("embeddings_table_name", "ticker_news_embeddings", "Destination table (vectors)")
 dbutils.widgets.text("chunk_embeddings_table_name", "ticker_news_chunk_embeddings", "Destination table (chunk vectors)")
-dbutils.widgets.text("embedding_model", "sentence-transformers/all-MiniLM-L6-v2", "Embedding model")
+dbutils.widgets.text("embedding_model", "sentence-transformers/all-MiniLM-L6-v2", "Embedding model")  # An embedding model from HuggingFace 
 dbutils.widgets.text("massive_secret_scope", "massive", "Massive API secret scope")
 dbutils.widgets.text("massive_secret_key", "api-key", "Massive API secret key")
 dbutils.widgets.text("massive_api_base_url", "https://api.massive.com", "Massive API base URL")
@@ -269,45 +275,41 @@ def fetch_news_for_ticker(session: requests.Session, ticker: str, limit: int) ->
     return resp.json().get("results", [])
 
 
-def sync_news_to_lakebase(ticker: str, articles: list[dict]) -> int:
-    """Convert Massive API response and insert via Lakebase SDK executeLakebasePostgresSql tool.
-    Uses ON CONFLICT DO NOTHING for automatic deduplication."""
-    if not articles:
-        return 0
-    
+def prepare_news_rows_for_insert(ticker: str, articles: list[dict]) -> list[dict]:
+    """Convert Massive API response into row dictionaries ready for batch insert.
+    Returns a list of row dicts that the caller will insert via psycopg2."""
     rows = []
-    for article in articles:
-        sentiment = None
-        sentiment_reasoning = None
-        for insight in article.get("insights", []) or []:
-            if insight.get("ticker") == ticker:
-                sentiment = insight.get("sentiment")
-                sentiment_reasoning = insight.get("sentiment_reasoning")
-                break
+    
+    if articles:
+        for article in articles:
+            sentiment = None
+            sentiment_reasoning = None
+            for insight in article.get("insights", []) or []:
+                if insight.get("ticker") == ticker:
+                    sentiment = insight.get("sentiment")
+                    sentiment_reasoning = insight.get("sentiment_reasoning")
+                    break
 
-        publisher = article.get("publisher") or {}
-        rows.append({
-            "id": str(article.get("id")),
-            "ticker": ticker,
-            "title": article.get("title", ""),
-            "description": article.get("description"),
-            "author": article.get("author"),
-            "article_url": article.get("article_url"),
-            "publisher_name": publisher.get("name"),
-            "keywords": _json.dumps(article.get("keywords", [])),
-            "sentiment": sentiment,
-            "sentiment_reasoning": sentiment_reasoning,
-            "published_utc": article.get("published_utc"),
-            "payload": _json.dumps(article),
-        })
+            publisher = article.get("publisher") or {}
+            rows.append(
+                {
+                    "id": str(article.get("id")),
+                    "ticker": ticker,
+                    "title": article.get("title", ""),
+                    "description": article.get("description"),
+                    "author": article.get("author"),
+                    "article_url": article.get("article_url"),
+                    "publisher_name": publisher.get("name"),
+                    "keywords": _json.dumps(article.get("keywords", [])),
+                    "sentiment": sentiment,
+                    "sentiment_reasoning": sentiment_reasoning,
+                    "published_utc": article.get("published_utc"),
+                    "payload": _json.dumps(article),
+                }
+            )
 
     # We'll collect these rows and write them via the assistant's executeLakebasePostgresSql tool
-    # Store in a global so the next cell can access them
     return rows
-
-
-print("NOTE: Before running this cell, ensure you've run sql/01_setup_news_table.sql")
-print("      to create the ticker_news_documents table in your Lakebase database.\n")
 
 tickers = get_watchlist_tickers()
 print(f"Found {len(tickers)} distinct watchlisted tickers: {tickers}")
@@ -322,16 +324,15 @@ _massive_session.headers.update(
     {"Authorization": f"Bearer {get_massive_api_key()}", "Content-Type": "application/json"}
 )
 
-news_synced = 0
 all_news_rows = []  # Collect all rows to insert via Lakebase SDK
 for i, ticker in enumerate(tickers):
     if i > 0:
         time.sleep(_seconds_between_requests)
     try:
         articles = fetch_news_for_ticker(_massive_session, ticker, NEWS_FETCH_LIMIT)
-        batch_rows = sync_news_to_lakebase(ticker, articles)
+        batch_rows = prepare_news_rows_for_insert(ticker, articles)
         if batch_rows:
-            all_news_rows.extend(batch_rows)
+            all_news_rows += batch_rows
     except Exception as exc:
         print(f"Skipping {ticker}: failed to fetch/sync news ({exc})")
         continue
@@ -409,6 +410,7 @@ print(f"\nReady to compute embeddings! Run the cells below to continue.")
 
 # COMMAND ----------
 
+# DBTITLE 1,Query from news table
 import pandas as pd
 import psycopg2
 
@@ -435,12 +437,12 @@ try:
             TRIM(CONCAT(COALESCE(title, ''), '. ', COALESCE(description, ''))) AS embedding_text
         FROM {NEWS_TABLE_NAME}
         WHERE TRIM(CONCAT(COALESCE(title, ''), '. ', COALESCE(description, ''))) IS NOT NULL
-          AND TRIM(CONCAT(COALESCE(title, ''), '. ', COALESCE(description, ''))) != ''
+          AND TRIM(CONCAT(COALESCE(title, ''), '. ', COALESCE(description, ''))) <> '.'
     """
-    
+     
     news_df = pd.read_sql_query(query, conn)
-    print(f"Loaded {len(news_df)} news documents from {NEWS_TABLE_NAME}")
-    display(news_df.head(5))
+    print(f"\nLoaded {len(news_df)} news documents from {NEWS_TABLE_NAME}")
+    display(news_df.head())
 finally:
     conn.close()
 
@@ -454,7 +456,7 @@ finally:
 
 # COMMAND ----------
 
-# DBTITLE 1,Compute embeddings (distributed pandas UDF)
+# DBTITLE 1,Compute embeddings on title and description (distributed pandas UDF)
 import os
 import pandas as pd
 from sentence_transformers import SentenceTransformer
@@ -473,10 +475,10 @@ batch_size = 32
 all_embeddings = []
 
 for i in range(0, len(news_df), batch_size):
-    batch = news_df.iloc[i:i+batch_size]
+    batch = news_df.iloc[i: i+batch_size]
     vectors = model.encode(batch["embedding_text"].tolist(), show_progress_bar=False)
-    all_embeddings.extend(vectors.tolist())
-    if (i + batch_size) % 128 == 0:
+    all_embeddings += vectors.tolist()
+    if ((i + batch_size) % 128 == 0) or ((i + batch_size) > len(news_df)):
         print(f"  Processed {min(i + batch_size, len(news_df))}/{len(news_df)} documents")
 
 # Create embeddings DataFrame
@@ -545,14 +547,14 @@ if len(embeddings_rows) > 0:
         cursor = conn.cursor()
         
         # Prepare data tuples for batch insert
-        # Format embedding as PostgreSQL array literal: '{val1,val2,...}'
+        # Format embedding as pgvector literal: '[val1,val2,...]'
         insert_data = [
             (
                 row['id'],
                 row['ticker'],
                 row['title'],
                 str(row['published_utc']) if row['published_utc'] else None,
-                '{' + ','.join(str(float(x)) for x in row['embedding']) + '}',
+                '[' + ','.join(str(float(x)) for x in row['embedding']) + ']',
                 row['model_name'],
                 row['embedded_at']
             )
@@ -563,20 +565,17 @@ if len(embeddings_rows) > 0:
         insert_sql = f"""
             INSERT INTO {EMBEDDINGS_TABLE_NAME} (
                 id, ticker, title, published_utc, embedding, model_name, embedded_at
-            ) VALUES %s
+            ) VALUES (%s, %s, %s, %s, %s::vector, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """
         
-        # execute_values is much faster than individual INSERTs
-        template = "(%s, %s, %s, %s, %s::double precision[], %s, %s)"
-        execute_values(cursor, insert_sql, insert_data, template=template, page_size=100)
+        # executemany is much faster than individual INSERTs
+        cursor.executemany(insert_sql, insert_data)
         
         conn.commit()
         inserted_count = cursor.rowcount
         print(f"✅ Successfully inserted {inserted_count} new embeddings")
         print(f"   (Duplicates were skipped via ON CONFLICT DO NOTHING)")
-        print("\nIMPORTANT: Run this SQL in your Lakebase database to cast arrays to vectors:")
-        print(f"  UPDATE {EMBEDDINGS_TABLE_NAME} SET embedding = embedding::vector WHERE embedding IS NOT NULL;")
         
     finally:
         cursor.close()
@@ -598,6 +597,7 @@ else:
 
 # COMMAND ----------
 
+# DBTITLE 1,Fetch and chunk article content
 import pandas as pd
 import requests
 import trafilatura
@@ -640,7 +640,7 @@ for idx, row in content_df.iterrows():
             break
     
     # Progress update every 10 articles
-    if (idx + 1) % 10 == 0:
+    if ((idx + 1) % 10 == 0) or ((idx + 1) == len(content_df)):
         print(f"  Processed {idx + 1}/{len(content_df)} articles")
 
 chunks_df = pd.DataFrame({
@@ -651,7 +651,7 @@ chunks_df = pd.DataFrame({
 })
 
 print(f"Extracted {len(chunks_df)} content chunks from {len(content_df)} article URLs")
-display(chunks_df.head(5))
+display(chunks_df.head())
 
 # COMMAND ----------
 
@@ -664,6 +664,7 @@ display(chunks_df.head(5))
 
 # COMMAND ----------
 
+# DBTITLE 1,Compute embeddings on content chunks
 import os
 import pandas as pd
 from sentence_transformers import SentenceTransformer
@@ -686,8 +687,8 @@ all_chunk_embeddings = []
 for i in range(0, len(chunks_df), batch_size):
     batch = chunks_df.iloc[i:i+batch_size]
     vectors = model.encode(batch["chunk_text"].tolist(), show_progress_bar=False)
-    all_chunk_embeddings.extend(vectors.tolist())
-    if (i + batch_size) % 128 == 0:
+    all_chunk_embeddings += vectors.tolist()
+    if ((i + batch_size) % 128 == 0) or ((i + batch_size) > len(chunks_df)):
         print(f"  Processed {min(i + batch_size, len(chunks_df))}/{len(chunks_df)} chunks")
 
 # Create chunk embeddings DataFrame
@@ -727,7 +728,7 @@ import psycopg2
 from datetime import datetime
 
 # Add id (article_id_chunk_index), model_name, and embedded_at columns
-chunk_embeddings_df['id'] = chunk_embeddings_df['article_id'] + '_' + chunk_embeddings_df['chunk_index']
+chunk_embeddings_df['id'] = chunk_embeddings_df['article_id'] + '_' + chunk_embeddings_df['chunk_index'].astype(str)
 chunk_embeddings_df['model_name'] = EMBEDDING_MODEL_NAME
 chunk_embeddings_df['embedded_at'] = datetime.now()
 chunk_embeddings_df['chunk_index'] = chunk_embeddings_df['chunk_index'].astype(int)
@@ -759,7 +760,7 @@ if len(chunk_embeddings_rows) > 0:
                 row['ticker'],
                 int(row['chunk_index']),
                 row['chunk_text'],
-                '{' + ','.join(str(float(x)) for x in row['embedding']) + '}',
+                '[' + ','.join(str(float(x)) for x in row['embedding']) + ']',
                 row['model_name'],
                 row['embedded_at']
             )
@@ -770,7 +771,7 @@ if len(chunk_embeddings_rows) > 0:
         insert_sql = f"""
             INSERT INTO {CHUNK_EMBEDDINGS_TABLE_NAME} (
                 id, article_id, ticker, chunk_index, chunk_text, embedding, model_name, embedded_at
-            ) VALUES (%s, %s, %s, %s, %s, %s::double precision[], %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s::vector, %s, %s)
             ON CONFLICT (id) DO NOTHING
         """
         
@@ -781,11 +782,173 @@ if len(chunk_embeddings_rows) > 0:
         inserted_count = cursor.rowcount
         print(f"✅ Successfully inserted {inserted_count} new chunk embeddings")
         print(f"   (Duplicates were skipped via ON CONFLICT DO NOTHING)")
-        print("\nIMPORTANT: Run this SQL in your Lakebase database to cast arrays to vectors:")
-        print(f"  UPDATE {CHUNK_EMBEDDINGS_TABLE_NAME} SET embedding = embedding::vector WHERE embedding IS NOT NULL;")
         
     finally:
         cursor.close()
         conn.close()
 else:
     print("No chunk embeddings to write.")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Test Backend Vector Search Query
+
+# COMMAND ----------
+
+# DBTITLE 1,Test backend search query
+# Test the exact query the Flask backend runs
+import psycopg2
+from sentence_transformers import SentenceTransformer
+import base64
+from urllib.parse import urlparse
+from databricks.sdk import WorkspaceClient
+
+# Re-define constants inline so this cell runs standalone
+w = WorkspaceClient()
+secret = w.secrets.get_secret(scope="database", key="lakebase-url")
+lakebase_url = base64.b64decode(secret.value).decode("utf-8")
+parsed = urlparse(lakebase_url)
+
+db_host = parsed.hostname
+db_port = parsed.port or 5432
+db_name = parsed.path.lstrip('/')
+db_user = parsed.username
+db_password = parsed.password
+
+EMBEDDINGS_TABLE_NAME = "ticker_news_embeddings"
+CHUNK_EMBEDDINGS_TABLE_NAME = "ticker_news_chunk_embeddings"
+NEWS_TABLE_NAME = "ticker_news_documents"
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Load model and create test query embedding
+model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+test_query = "Apple stock earnings report"
+query_embedding = model.encode([test_query])[0].tolist()
+
+# Format as PostgreSQL array literal for pgvector
+query_embedding_str = '[' + ','.join(str(float(x)) for x in query_embedding) + ']'
+
+print(f"Test query: {test_query}")
+print(f"Embedding vector length: {len(query_embedding)}")
+print(f"Embedding preview: {query_embedding_str[:100]}...")
+print()
+
+# Test the article search query
+conn = psycopg2.connect(
+    host=db_host,
+    port=db_port,
+    dbname=db_name,
+    user=db_user,
+    password=db_password,
+    sslmode='require'
+)
+
+try:
+    cursor = conn.cursor()
+    
+    # Test 1: Check tables exist and have data
+    print("=" * 70)
+    print("Test 1: Checking table status...")
+    print("=" * 70)
+    
+    cursor.execute(f"""
+        SELECT 
+            '{EMBEDDINGS_TABLE_NAME}' as table_name,
+            COUNT(*) as total_rows,
+            COUNT(embedding) as non_null_embeddings,
+            pg_typeof(embedding) as embedding_type
+        FROM {EMBEDDINGS_TABLE_NAME}
+        GROUP BY pg_typeof(embedding)
+        
+        UNION ALL
+        
+        SELECT 
+            '{CHUNK_EMBEDDINGS_TABLE_NAME}' as table_name,
+            COUNT(*) as total_rows,
+            COUNT(embedding) as non_null_embeddings,
+            pg_typeof(embedding) as embedding_type
+        FROM {CHUNK_EMBEDDINGS_TABLE_NAME}
+        GROUP BY pg_typeof(embedding)
+    """)
+    
+    for row in cursor.fetchall():
+        print(f"  {row[0]}: {row[1]} total rows, {row[2]} with embeddings, type = {row[3]}")
+    print()
+    
+    # Test 2: Run the exact article search query from app.py
+    print("=" * 70)
+    print("Test 2: Running article search query...")
+    print("=" * 70)
+    
+    article_sql = f"""
+        SELECT 
+            e.id,
+            e.ticker,
+            n.title,
+            n.description,
+            n.article_url,
+            n.published_utc,
+            e.embedding <=> %s::vector AS distance
+        FROM {EMBEDDINGS_TABLE_NAME} e
+        JOIN {NEWS_TABLE_NAME} n ON e.id = n.id
+        WHERE e.embedding IS NOT NULL
+        ORDER BY distance ASC
+        LIMIT 10
+    """
+    
+    cursor.execute(
+        article_sql,(query_embedding_str,)
+    )
+    articles = cursor.fetchall()
+    
+    print(f"  Found {len(articles)} article results")
+    if articles:
+        print("\n  Top 3 results:")
+        for i, row in enumerate(articles[:3]):
+            print(f"    {i+1}. [{row[1]}] {row[2][:60]}... (distance: {row[6]:.4f})")
+    else:
+        print("  ⚠️ No results returned!")
+    print()
+    
+    # Test 3: Run the chunk search query
+    print("=" * 70)
+    print("Test 3: Running chunk search query...")
+    print("=" * 70)
+    
+    chunk_sql = f"""
+        SELECT 
+            article_id,
+            ticker,
+            chunk_text,
+            chunk_index,
+            embedding <=> %s::vector AS distance
+        FROM {CHUNK_EMBEDDINGS_TABLE_NAME}
+        WHERE embedding IS NOT NULL
+        ORDER BY distance ASC
+        LIMIT 10
+    """
+    
+    cursor.execute(chunk_sql, (query_embedding_str,))
+    chunks = cursor.fetchall()
+    
+    print(f"  Found {len(chunks)} chunk results")
+    if chunks:
+        print("\n  Top 3 chunks:")
+        for i, row in enumerate(chunks[:3]):
+            print(f"    {i+1}. [{row[1]}] {row[2][:80]}... (distance: {row[4]:.4f})")
+    else:
+        print("  ⚠️ No results returned!")
+    print()
+    
+    print("=" * 70)
+    if articles or chunks:
+        print("✅ SUCCESS! Backend queries work correctly.")
+    else:
+        print("⚠️ ISSUE: Queries run but return no results.")
+        print("   Check if embeddings are NULL or dimension mismatch.")
+    print("=" * 70)
+    
+finally:
+    cursor.close()
+    conn.close()

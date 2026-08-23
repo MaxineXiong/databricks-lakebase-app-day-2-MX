@@ -20,13 +20,14 @@ CREATE TABLE IF NOT EXISTS ticker_news_chunk_embeddings (
     chunk_text TEXT NOT NULL,
     embedding VECTOR({{EMBEDDING_DIM}}) NOT NULL,
     model_name TEXT NOT NULL,
-    embedded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    embedded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    FOREIGN KEY (article_id) REFERENCES ticker_news_embeddings(id)
 );
 
--- Create HNSW index for fast cosine similarity search
-CREATE INDEX IF NOT EXISTS idx_ticker_news_chunk_embeddings_embedding
-ON ticker_news_chunk_embeddings
-USING hnsw (embedding vector_cosine_ops);
+-- -- Create HNSW index for fast cosine similarity search
+-- CREATE INDEX IF NOT EXISTS idx_ticker_news_chunk_embeddings_embedding
+-- ON ticker_news_chunk_embeddings
+-- USING hnsw (embedding vector_cosine_ops);
 
 -- Verify the table was created
 SELECT 

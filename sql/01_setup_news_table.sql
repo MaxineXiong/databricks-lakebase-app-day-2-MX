@@ -18,9 +18,9 @@ CREATE TABLE IF NOT EXISTS ticker_news_documents (
     synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Create index for ticker lookups
-CREATE INDEX IF NOT EXISTS idx_ticker_news_documents_ticker 
-ON ticker_news_documents (ticker);
+-- -- Create index for ticker lookups
+-- CREATE INDEX IF NOT EXISTS idx_ticker_news_documents_ticker 
+-- ON ticker_news_documents (ticker);
 
 -- Verify the table was created
 SELECT 

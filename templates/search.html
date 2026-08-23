@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Ticker News Search</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card-bg: #ffffff;
+      --border: #e4e7ee;
+      --text: #1f2430;
+      --muted: #6b7280;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --success: #10b981;
+      --radius: 10px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      max-width: 900px;
+      margin: 48px auto;
+      padding: 0 20px;
+      color: var(--text);
+      background: var(--bg);
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .nav {
+      margin-top: 16px;
+      margin-bottom: 24px;
+    }
+
+    .nav a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .nav a:hover {
+      text-decoration: underline;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-top: 24px;
+      box-shadow: 0 1px 3px rgba(16, 24, 40, 0.04);
+    }
+
+    label {
+      display: block;
+      margin-top: 16px;
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text);
+    }
+    label:first-child { margin-top: 0; }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.15s ease;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.15s ease;
+    }
+    input[type="number"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: white;
+      transition: border-color 0.15s ease;
+    }
+    select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 5fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .checkbox-wrapper {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: background 0.15s ease;
+    }
+
+    .checkbox-wrapper:hover {
+      background: #f3f4f6;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      margin: 0;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      margin-right: 10px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    .checkbox-label span {
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    button {
+      padding: 10px 24px;
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+      white-space: nowrap;
+    }
+    button:hover { 
+      background: var(--accent-hover);
+      box-shadow: 0 4px 8px rgba(79, 70, 229, 0.3);
+      transform: translateY(-1px);
+    }
+    button:active { 
+      transform: translateY(0px);
+      box-shadow: 0 1px 2px rgba(79, 70, 229, 0.2);
+    }
+    button:disabled { 
+      opacity: 0.5; 
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    #status {
+      margin-top: 16px;
+      padding: 12px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+    }
+    #status.show { display: block; }
+    #status.loading {
+      background: #f0f9ff;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+    #status.error {
+      background: #fef2f2;
+      color: #dc2626;
+      border: 1px solid #fecaca;
+    }
+
+    .results-section {
+      margin-top: 24px;
+      display: none;
+    }
+    .results-section.show { display: block; }
+
+    .results-section h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .result-item {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: box-shadow 0.15s ease;
+    }
+    .result-item:hover {
+      box-shadow: 0 2px 8px rgba(16, 24, 40, 0.08);
+    }
+
+    .result-item .ticker {
+      display: inline-block;
+      background: var(--accent);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 8px;
+    }
+
+    .result-item .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 8px 0 4px 0;
+    }
+
+    .result-item .title a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .result-item .title a:hover {
+      text-decoration: underline;
+    }
+
+    .result-item .description {
+      font-size: 14px;
+      color: var(--text);
+      margin: 8px 0;
+      line-height: 1.6;
+    }
+
+    .result-item .sentiment {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-right: 8px;
+    }
+
+    .result-item .sentiment.positive {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .result-item .sentiment.negative {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .result-item .sentiment.neutral {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .result-item .chunk-text {
+      font-size: 14px;
+      color: var(--text);
+      margin: 12px 0;
+      padding: 12px 16px;
+      background: #f9fafb;
+      border-left: 4px solid var(--accent);
+      border-radius: 4px;
+      line-height: 1.6;
+      font-style: italic;
+      position: relative;
+    }
+
+
+
+    .result-item .meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .result-item .distance {
+      display: inline-block;
+      background: #f0fdf4;
+      color: var(--success);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .empty-results {
+      text-align: center;
+      color: var(--muted);
+      padding: 40px 20px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔍 Ticker News Search</h1>
+  <p class="hint">Search for relevant ticker articles and chunks using semantic similarity. Enter any question or topic related to stocks.</p>
+  
+  <div class="nav">
+    <a href="/">← Back to Watchlist</a>
+  </div>
+
+  <div class="card">
+    <form id="search-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="query">Search query</label>
+          <input type="text" id="query" name="query" placeholder="What's the latest news about tech stocks?" required>
+        </div>
+        <div class="form-group">
+          <label for="limit">Results</label>
+          <input type="number" id="limit" name="limit" value="10" min="1" max="100" required>
+        </div>
+        <button type="submit" id="search-btn">🔍 Search</button>
+      </div>
+      
+      <div class="checkbox-wrapper">
+        <label class="checkbox-label" for="include-chunks">
+          <input type="checkbox" id="include-chunks" name="include_chunks">
+          <span>Include chunk-level search results</span>
+        </label>
+      </div>
+    </form>
+
+    <div id="status"></div>
+  </div>
+
+  <div id="articles-section" class="results-section">
+    <h2>📰 Articles</h2>
+    <div id="articles-results"></div>
+  </div>
+
+  <div id="chunks-section" class="results-section">
+    <h2>📄 Chunks</h2>
+    <div id="chunks-results"></div>
+  </div>
+
+  <script>
+    const form = document.getElementById("search-form");
+    const statusEl = document.getElementById("status");
+    const searchBtn = document.getElementById("search-btn");
+    const articlesSection = document.getElementById("articles-section");
+    const chunksSection = document.getElementById("chunks-section");
+    const articlesResults = document.getElementById("articles-results");
+    const chunksResults = document.getElementById("chunks-results");
+
+    function showStatus(message, type) {
+      statusEl.textContent = message;
+      statusEl.className = "show " + type;
+    }
+
+    function hideStatus() {
+      statusEl.className = "";
+    }
+
+    function formatDistance(distance) {
+      return ((1 - distance) * 100).toFixed(2) + '%';
+    }
+
+    function getSentimentClass(sentiment) {
+      if (!sentiment) return 'neutral';
+      const s = sentiment.toLowerCase();
+      if (s === 'positive' || s === 'bullish') return 'positive';
+      if (s === 'negative' || s === 'bearish') return 'negative';
+      return 'neutral';
+    }
+
+    function renderArticles(articles) {
+      if (!articles || articles.length === 0) {
+        articlesResults.innerHTML = '<div class="empty-results">No articles found</div>';
+        return;
+      }
+
+      articlesResults.innerHTML = articles.map(article => `
+        <div class="result-item">
+          <span class="ticker">${article.ticker || 'N/A'}</span>
+          <span class="distance">Similarity: ${formatDistance(article.distance)}</span>
+          ${article.sentiment ? `<span class="sentiment ${getSentimentClass(article.sentiment)}">${article.sentiment}</span>` : ''}
+          <div class="title">
+            ${article.article_url ? 
+              `<a href="${article.article_url}" target="_blank">${article.title || 'No title'}</a>` : 
+              (article.title || 'No title')
+            }
+          </div>
+          ${article.description ? `<div class="description">${article.description}</div>` : ''}
+          <div class="meta">
+            ${article.published_utc ? new Date(article.published_utc).toLocaleDateString() : 'Date unknown'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderChunks(chunks) {
+      if (!chunks || chunks.length === 0) {
+        chunksResults.innerHTML = '<div class="empty-results">No chunks found</div>';
+        return;
+      }
+
+      chunksResults.innerHTML = chunks.map(chunk => `
+        <div class="result-item">
+          <span class="ticker">${chunk.ticker || 'N/A'}</span>
+          <span class="distance">Similarity: ${formatDistance(chunk.distance)}</span>
+          ${chunk.sentiment ? `<span class="sentiment ${getSentimentClass(chunk.sentiment)}">${chunk.sentiment}</span>` : ''}
+          <div class="title">
+            ${chunk.article_url ? 
+              `<a href="${chunk.article_url}" target="_blank">${chunk.title || 'No title'}</a>` : 
+              (chunk.title || 'No title')
+            }
+          </div>
+          <div class="chunk-text">${chunk.chunk_text || 'No text'}</div>
+          <div class="meta">
+            ${chunk.published_utc ? new Date(chunk.published_utc).toLocaleDateString() : 'Date unknown'}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const query = document.getElementById("query").value;
+      const includeChunks = document.getElementById("include-chunks").checked;
+      const limit = parseInt(document.getElementById("limit").value);
+
+      showStatus("Searching...", "loading");
+      searchBtn.disabled = true;
+      articlesSection.classList.remove("show");
+      chunksSection.classList.remove("show");
+
+      try {
+        const resp = await fetch("/search/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query, include_chunks: includeChunks, limit }),
+        });
+        
+        const data = await resp.json();
+        
+        if (!resp.ok) {
+          showStatus("Error: " + (data.error || resp.statusText), "error");
+          return;
+        }
+
+        hideStatus();
+
+        // Show articles if returned
+        if (data.articles) {
+          articlesSection.classList.add("show");
+          renderArticles(data.articles);
+        }
+        if (data.articles_error) {
+          articlesSection.classList.add("show");
+          articlesResults.innerHTML = `<div class="empty-results">Error loading articles: ${data.articles_error}</div>`;
+        }
+
+        // Show chunks if returned
+        if (data.chunks) {
+          chunksSection.classList.add("show");
+          renderChunks(data.chunks);
+        }
+        if (data.chunks_error) {
+          chunksSection.classList.add("show");
+          chunksResults.innerHTML = `<div class="empty-results">Error loading chunks: ${data.chunks_error}</div>`;
+        }
+
+        if (!data.articles && !data.chunks && !data.articles_error && !data.chunks_error) {
+          showStatus("No results found", "error");
+        }
+
+      } catch (err) {
+        showStatus("Request failed: " + err, "error");
+      } finally {
+        searchBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
