@@ -7,6 +7,12 @@ The application provides two main features:
 * **Weather Data Sync** - Fetch weather alerts and forecasts from the NWS API for any US city and load them into Lakebase for later semantic search.
 * **Weather Semantic Search** - Semantic search over stored weather documents using pgvector cosine similarity, with optional filtering by source type (alerts vs. forecasts) and an AI-generated natural-language summary of the retrieved results powered by a Databricks Foundation Model LLM.
 
+## 📚 About This Project
+
+This application is my submission for **Day 2 Homework: Vector Weather Retrieval Service** under the [DataExpert.io](https://www.dataexpert.io) program [The Rise of the AI Data Engineer](https://learn.dataexpert.io/program/the-one-week-beginners-databricks-boot-camp-7129).
+
+All data is stored in **Databricks Lakebase Postgres**, demonstrating real-world use of Databricks' managed Postgres offering for **OLTP** workloads.
+
 ## Data Source
 
 We chose the **National Weather Service (NWS) API** (`https://api.weather.gov`) because:
