@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Data Sync</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #444;
+        }
+        textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+        input[type="number"] {
+            width: 150px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #result {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        #result.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        #result.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .example {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            color: #007bff;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-links">
+            <a href="/">← Back to Home</a>
+            <a href="/search">Weather Information Search</a>
+        </div>
+        
+        <h1>Weather Data Sync</h1>
+        <p class="subtitle">Fetch weather alerts and forecasts from the National Weather Service API</p>
+        
+        <form id="weatherForm">
+            <div class="form-group">
+                <label for="locations">Locations (one per line, format: "City, ST")</label>
+                <textarea 
+                    id="locations" 
+                    name="locations" 
+                    rows="8" 
+                    placeholder="Chicago, IL&#10;Austin, TX&#10;Seattle, WA&#10;Miami, FL&#10;Denver, CO"
+                    required
+                >Chicago, IL
+Austin, TX
+Seattle, WA</textarea>
+                <p class="example">Example: "Chicago, IL" or "San Francisco, CA"</p>
+            </div>
+            
+            <div class="form-group">
+                <label for="limit">Limit (max documents per location)</label>
+                <input 
+                    type="number" 
+                    id="limit" 
+                    name="limit" 
+                    min="1" 
+                    max="1000" 
+                    value="50" 
+                    placeholder="50"
+                >
+                <p class="example">Optional: Leave blank to fetch all available documents</p>
+            </div>
+            
+            <button type="submit" id="submitBtn">Sync Weather Data</button>
+        </form>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        document.getElementById('weatherForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const resultDiv = document.getElementById('result');
+            const locationsText = document.getElementById('locations').value;
+            const limitValue = document.getElementById('limit').value;
+            
+            // Parse locations (one per line)
+            const locations = locationsText
+                .split('\n')
+                .map(loc => loc.trim())
+                .filter(loc => loc.length > 0);
+            
+            if (locations.length === 0) {
+                resultDiv.className = 'error';
+                resultDiv.style.display = 'block';
+                resultDiv.textContent = 'Please enter at least one location';
+                return;
+            }
+            
+            // Disable button and show loading state
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Syncing...';
+            resultDiv.style.display = 'none';
+            
+            try {
+                const payload = {
+                    locations: locations
+                };
+                
+                // Add limit only if provided
+                if (limitValue && limitValue.trim() !== '') {
+                    payload.limit = parseInt(limitValue);
+                }
+                
+                const response = await fetch('/weather/sync', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.className = 'success';
+                    resultDiv.textContent = `✓ Successfully synced ${data.synced} weather documents for ${data.locations.length} location(s)`;
+                } else {
+                    resultDiv.className = 'error';
+                    resultDiv.textContent = `Error: ${data.error || 'Failed to sync weather data'}`;
+                }
+                
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.textContent = `Error: ${error.message}`;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sync Weather Data';
+                resultDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

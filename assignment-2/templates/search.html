@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Information Search</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #444;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input[type="number"] {
+            width: 150px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        #searchResult {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+        #searchResult.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        #searchResult.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .example {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+            font-style: italic;
+        }
+        .nav-links {
+            margin-bottom: 20px;
+        }
+        .nav-links a {
+            color: #007bff;
+            text-decoration: none;
+            margin-right: 20px;
+        }
+        .nav-links a:hover {
+            text-decoration: underline;
+        }
+        .search-results {
+            margin-top: 20px;
+        }
+        .summary-box {
+            margin-top: 20px;
+            padding: 16px;
+            background: #e8f5e9;
+            border: 1px solid #a5d6a7;
+            border-radius: 4px;
+            display: none;
+        }
+        .summary-box h3 {
+            margin: 0 0 8px 0;
+            color: #2e7d32;
+            font-size: 15px;
+        }
+        .summary-box p {
+            margin: 0;
+            color: #333;
+            line-height: 1.6;
+            font-size: 14px;
+        }
+        .result-card {
+            background: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .result-card .location {
+            font-weight: 600;
+            color: #333;
+            font-size: 15px;
+        }
+        .result-card .headline {
+            color: #555;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+        .result-card .similarity {
+            display: inline-block;
+            background: #e3f2fd;
+            color: #1565c0;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .result-card .source-tag {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 8px;
+            margin-left: 6px;
+        }
+        .result-card .source-tag.alert {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .result-card .source-tag.forecast {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        .result-card .chunk-text {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+            max-height: 120px;
+            overflow-y: auto;
+            background: white;
+            padding: 8px;
+            border-radius: 3px;
+            border: 1px solid #eee;
+        }
+        .result-card .chunk-text::-webkit-scrollbar {
+            width: 6px;
+        }
+        .result-card .chunk-text::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 3px;
+        }
+        .inline-group {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+        .inline-group .form-group {
+            flex: 1;
+        }
+        .inline-group .form-group:nth-child(2) {
+            flex: 0 0 180px;
+        }
+        .inline-group .form-group:nth-child(3) {
+            flex: 0 0 160px;
+        }
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            background: white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="nav-links">
+            <a href="/">← Back to Home</a>
+            <a href="/">Weather Information Search</a>
+        </div>
+
+        <h1>Weather Information Search</h1>
+        <p class="subtitle">Search weather documents by semantic similarity</p>
+
+        <form id="searchForm">
+            <div class="inline-group">
+                <div class="form-group">
+                    <label for="query">Search Query</label>
+                    <input
+                        type="text"
+                        id="query"
+                        name="query"
+                        placeholder="e.g. risk of flooding near rivers"
+                        required
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="topK">Top K Results</label>
+                    <input
+                        type="number"
+                        id="topK"
+                        name="top_k"
+                        min="1"
+                        max="20"
+                        value="5"
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="sourceType">Source Type</label>
+                    <select id="sourceType" name="source_type">
+                        <option value="all">All</option>
+                        <option value="alert">Alert</option>
+                        <option value="forecast">Forecast</option>
+                    </select>
+                </div>
+            </div>
+            <button type="submit" id="searchBtn">Search</button>
+        </form>
+
+        <div id="searchResult"></div>
+        <div id="summaryBox" class="summary-box">
+            <h3>AI Summary</h3>
+            <p id="summaryText"></p>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <script>
+        document.getElementById('searchForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const searchBtn = document.getElementById('searchBtn');
+            const searchResultDiv = document.getElementById('searchResult');
+            const searchResultsDiv = document.getElementById('searchResults');
+            const query = document.getElementById('query').value.trim();
+            const topK = document.getElementById('topK').value || 5;
+            const sourceType = document.getElementById('sourceType').value || 'all';
+
+            if (!query) {
+                searchResultDiv.className = 'error';
+                searchResultDiv.style.display = 'block';
+                searchResultDiv.textContent = 'Please enter a search query';
+                return;
+            }
+
+            const summaryBox = document.getElementById('summaryBox');
+            const summaryText = document.getElementById('summaryText');
+
+            searchBtn.disabled = true;
+            searchBtn.textContent = 'Searching...';
+            searchResultDiv.style.display = 'none';
+            summaryBox.style.display = 'none';
+            searchResultsDiv.innerHTML = '';
+
+            try {
+                const params = new URLSearchParams({ query: query, top_k: parseInt(topK), source_type: sourceType });
+                const response = await fetch('/weather/search?' + params.toString());
+
+                const data = await response.json();
+
+                if (response.ok && data.results) {
+                    searchResultDiv.className = 'success';
+                    searchResultDiv.textContent = 'Found ' + data.results.length + ' result(s)';
+                    searchResultDiv.style.display = 'block';
+
+                    if (data.summary) {
+                        summaryText.textContent = data.summary;
+                        summaryBox.style.display = 'block';
+                    }
+
+                    if (data.results.length === 0) {
+                        searchResultsDiv.innerHTML = '<p class="subtitle">No matching documents found.</p>';
+                    } else {
+                        searchResultsDiv.innerHTML = data.results.map(function(r) {
+                            var tagClass = r.source_type === 'alert' ? 'alert' : 'forecast';
+                            var tagLabel = r.source_type === 'alert' ? 'Alert' : 'Forecast';
+                            return '<div class="result-card">' +
+                                '<div class="location">' + (r.location || 'Unknown') + '</div>' +
+                                '<div class="headline">' + (r.headline || '') + '</div>' +
+                                '<span class="similarity">' + (r.similarity * 100).toFixed(1) + '% match</span>' +
+                                '<span class="source-tag ' + tagClass + '">' + tagLabel + '</span>' +
+                                '<div class="chunk-text">' + (r.chunk_text || '') + '</div>' +
+                                '</div>';
+                        }).join('');
+                    }
+                } else {
+                    searchResultDiv.className = 'error';
+                    searchResultDiv.textContent = 'Error: ' + (data.error || 'Search failed');
+                    searchResultDiv.style.display = 'block';
+                }
+            } catch (error) {
+                searchResultDiv.className = 'error';
+                searchResultDiv.textContent = 'Error: ' + error.message;
+                searchResultDiv.style.display = 'block';
+            } finally {
+                searchBtn.disabled = false;
+                searchBtn.textContent = 'Search';
+            }
+        });
+    </script>
+</body>
+</html>
