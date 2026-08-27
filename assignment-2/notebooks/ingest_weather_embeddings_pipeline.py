@@ -115,7 +115,7 @@ try:
             cursor.execute("SELECT COUNT(*) FROM information_schema.tables;")
             count = cursor.fetchall()[0]['count']
             print(f"✅ Connection successful!")
-    print("\n✅ psycopg3 with OAuth authentication working correctly!")
+    print("\n✅ psycopg2 with OAuth authentication working correctly!")
 except Exception as e:
     print(f"❌ Connection failed: {e}")
     print(f"\nFull traceback:")

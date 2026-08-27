@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS public.weather_documents (
     narrative_text TEXT,
     effective_at TIMESTAMPTZ,
     payload JSONB NOT NULL,
-    synced_at TIMESTAMPTZ NOT NULL
+    synced_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
 );
 """
 
@@ -95,15 +96,19 @@ WITH (m = 16, ef_construction = 64);
 
 
 def init_schema():
-    """Initialize the weather data schema (creates tables if they don't exist)."""
+    """Initialize the weather data schema (creates tables if they don't exist).
+
+    This function is non-destructive: it uses CREATE TABLE IF NOT EXISTS, so
+    existing tables and data are preserved. To wipe and rebuild from scratch,
+    manually run DROP TABLE on weather_embeddings and weather_documents first,
+    then call init_schema().
+    """
     with get_connection() as conn:
         conn.set_session(autocommit=True)
         with conn.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS public.weather_documents CASCADE")
-            cur.execute("DROP TABLE IF EXISTS public.weather_embeddings")
             # Enable vector extension for pgvector support
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
-            # Create tables
+            # Create tables (IF NOT EXISTS = no-op if already present)
             cur.execute(DDL_WEATHER_DOCUMENTS)
             cur.execute(DDL_WEATHER_EMBEDDINGS)
             # Create an index for faster vector search performance

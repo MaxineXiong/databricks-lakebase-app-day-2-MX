@@ -1,7 +1,7 @@
 """
-One-time setup script: creates the Databricks secret scope and stores the
-Massive API key. Run this locally (with the Databricks CLI configured) or
-from a notebook - never commit the resulting secret value anywhere.
+One-time setup script: stores the Lakebase connection URL in a Databricks
+secret scope. Run this locally (with the Databricks CLI configured) or from
+a notebook - never commit the resulting secret value anywhere.
 
 Usage:
     python setup_secrets.py
