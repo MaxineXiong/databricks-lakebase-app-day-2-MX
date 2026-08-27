@@ -58,6 +58,14 @@ def run_write(sql: str, params: tuple | dict | None = None) -> int:
             cur.execute(sql, params)
             conn.commit()
             return cur.rowcount
+        
+def run_insert(sql: str, batch_rows: list[tuple]) -> int:
+    """Insert multiple rows into Lakebase, return affected row count."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.executemany(sql, batch_rows)
+            conn.commit()
+            return cur.rowcount
 
 
 # DDL for weather data tables

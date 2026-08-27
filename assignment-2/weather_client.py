@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from dateutil import parser as date_parser
 from typing import Any
 import requests
-from geopy.geocoders import Nominatim
+from geopy.geocoders import ArcGIS
 
 _DEFAULT_TIMEOUT = 30
 
@@ -35,7 +35,7 @@ class WeatherClient:
             }
         )
         # Initialize geocoder for city->lat/lon conversion
-        self._geocoder = Nominatim(user_agent="databricks_weather_pipeline")
+        self._geocoder = ArcGIS()
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         """Make a GET request to the NWS API."""
@@ -242,22 +242,19 @@ class WeatherClient:
         documents = []
         
         # Determine coordinates
-        if lat is not None and lon is not None:
-            # Use provided coordinates (city/state may or may not be provided)
-            pass
-        elif city:
+        if city and state:
             # Geocode city to get coordinates
             coords = self.geocode_city(city, state)
             if not coords:
-                print(f"Could not geocode city: {city}, {state}")
+                print(f"Could not geocode the city and state: {city}, {state}")
                 return []
             lat, lon = coords
+
+            # Build location label for error messages
+            location_label = f"{city}, {state}"
         else:
-            print("Must provide either (city) or (lat, lon)")
+            print("Must provide both city and state")
             return []
-        
-        # Build location label for error messages
-        location_label = f"{city}, {state}" if city and state else (city if city else f"{lat},{lon}")
         
         # 1. Get grid point
         try:
@@ -271,14 +268,13 @@ class WeatherClient:
             return documents
         
         # 2. Get active alerts (if state provided)
-        if state:
-            try:
-                alerts = self.get_active_alerts(state)
-                for alert_feature in alerts:
-                    doc = self.normalize_alert(alert_feature, city, state, lat, lon)
-                    documents.append(doc)
-            except Exception as e:
-                print(f"Failed to get alerts for {state}: {e}")
+        try:
+            alerts = self.get_active_alerts(state)
+            for alert_feature in alerts:
+                doc = self.normalize_alert(alert_feature, city, state, lat, lon)
+                documents.append(doc)
+        except Exception as e:
+            print(f"Failed to get alerts for {state}: {e}")
         
         # 3. Get regular forecast
         try:
